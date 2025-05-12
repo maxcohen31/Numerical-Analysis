@@ -119,7 +119,7 @@ void luDecomposition(double **a, int d)
             }
         }
         // swap rows if the index of the column k and the row index are different
-        // we make this swap since we want the max absolute element value in the main diagonal
+        // we make this swap since we want the max absolute value element in the main diagonal
         if (pivotRow != k)
         {
             swapRows(copy, k, pivotRow);
