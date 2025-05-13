@@ -1,6 +1,9 @@
 /*
  *  LU decomposition - Doolitle's algorithm implementation with partial pivoting
  *
+ *  { Ly=b
+ *  { Ux=y
+ *
  *  Spring 2025 - Author: Abbate Emanuele
  *
  *  References:  https://www.cs.gordon.edu/courses/mat342/handouts/gauss.pdf 
@@ -92,7 +95,7 @@ void luDecomposition(double **a, int d)
             p[i][j] = (i == j) ? 1.0 : 0.0;
         }
     }
-    // initialize L as the identity matrix and U as zero 
+    // initialize L as the identity matrix and U as the null matrix
     for (int i = 0; i < d; ++i)
     {
         l[i] = malloc(d * sizeof(double));
@@ -108,22 +111,22 @@ void luDecomposition(double **a, int d)
     for (int k = 0; k < d; ++k)
     {
         // find the row with the max absolute value in the column k 
-        int pivotRow = k; // let's say the max row is k 
+        int pivotRow = k; // let's say the row with the maximum pivot is k 
         double pivot = fabs(copy[k][k]); // we suppose the pivot is the matrix diagonal element
         for (int i = k; i < d; ++i)
         {
             if (fabs(copy[i][k]) > pivot)
             {
                 pivot = fabs(copy[i][k]); // take the absoulte value of the max element
-                pivotRow = i;
+                pivotRow = i; // update the row
             }
         }
         // swap rows if the index of the column k and the row index are different
         // we make this swap since we want the max absolute value element in the main diagonal
         if (pivotRow != k)
         {
-            swapRows(copy, k, pivotRow);
-            swapRows(p, k, pivotRow);
+            swapRows(copy, k, pivotRow); // update A
+            swapRows(p, k, pivotRow); // update P
         }
         if (k > 0) // k = 0 -> we did not calculate L yet
         {
