@@ -8,15 +8,16 @@
  *
  *  References:  https://www.cs.gordon.edu/courses/mat342/handouts/gauss.pdf 
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <string.h>
 #include <time.h>
 #include <math.h>
-#include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 
+#define NUM_THREAD 3
 
 // Sarrus's rule for a 3x3 matrix
 // int determinant(int **m)
@@ -29,17 +30,99 @@
 //     return det;
 // }
 
-
-double **makeCopy(double **m, int d)
+/* thread structure */
+typedef struct 
 {
-    // make a copy of a 2D array
-    double **matrixCopy = malloc(d * sizeof(double*));
-    for (int i = 0; i < d; ++i)
+    double **a;
+    double **l;
+    double **u;
+    int n;
+    int startingRow;
+    int endingRow;
+} threadArg;
+
+void *parallelLU(void *args)
+{
+    /* performing the LU decomposition without a permutation matrix */
+    threadArg *t = (threadArg*)args;
+    double **aMatrix = t->a;
+    double **lMatrix = t->l;
+    double **uMatrix = t->u;
+    int start = t->startingRow;
+    int end = t->endingRow;
+    int d = t->n;
+
+    printf("LU decomposition started!\n");
+    for (int i = start; i < end; ++i)
     {
-        matrixCopy[i] = malloc(d * sizeof(double));
-        memcpy(matrixCopy[i], m[i], d * sizeof(double));
+        printf("[%d] Thread -> building U\n", gettid());
+        for (int j = i; j < d; ++j)
+        {
+            double s = 0.0;
+            for (int k = 0; k < d; ++k)
+            {
+                s += lMatrix[i][k] * uMatrix[k][j];
+            }
+            uMatrix[i][j] = aMatrix[i][j] - s;
+        }
+        /* lMatrix[i][i] = 1.0; // main diagonal of L set to 1 */
+        printf("[%d] Thread -> building L\n", gettid());
+        for (int j = i; j < d; ++j)
+        {
+            double s = 0.0;
+            for (int k = 0; k < d; ++k)
+            {
+                s += lMatrix[j][k] * uMatrix[k][i];
+            }
+            lMatrix[j][i] = (aMatrix[i][j] - s) / uMatrix[i][i];
+        } 
     }
-    return matrixCopy;
+
+    return NULL;
+}
+
+void swapRows(double **a, int r1, int r2)
+{
+    /* swap two rows of a given matrix */
+    double *temp = a[r1];
+    a[r1] = a[r2];
+    a[r2] = temp;
+}
+
+void partialPivoting(double **a, double **l, double **p, int n)
+{
+    // partial pivoting subroutine
+    for (int k = 0; k < n; ++k)
+    {
+        // find the row with the max absolute value in the column k 
+        int pivotRow = k; // let's say the row with the maximum pivot is k 
+        double pivot = fabs(a[k][k]); // we suppose the pivot is the matrix diagonal element
+        for (int i = k; i < n; ++i)
+        {
+            if (fabs(a[i][k]) > pivot)
+            {
+                pivot = fabs(a[i][k]); // take the absoulte value of the max element
+                pivotRow = i; // update the row
+            }
+        }
+        // swap rows if the index of the column k and the row index are different
+        // we make this swap since we want the max absolute value element in the main diagonal
+        if (pivotRow != k)
+        {
+            swapRows(a, k, pivotRow); // update A
+            swapRows(p, k, pivotRow); // update P
+        }
+        if (k > 0) // k = 0 -> we did not calculate L yet
+        {
+            // update L
+            for (int i = 0; i < k; ++i)
+            {
+                double temp = l[k][i];
+                l[k][i] = l[pivotRow][i];
+                l[pivotRow][i] = temp;
+            }
+        }    
+    }
 }
 
 void showMatrix(double **m, int d)
@@ -54,138 +137,17 @@ void showMatrix(double **m, int d)
     }
 }
 
-void deallocateMemory(double **a, int d)
+void deallocateMemory(double **a, double **l, double **u, int d)
 {
     for (int i = 0; i < d; ++i)
     {
         free(a[i]);
+        free(l[i]);
+        free(u[i]);
     }
     free(a);
-}
-
-void swapRows(double **a, int r1, int r2)
-{
-    double *temp = a[r1];
-    a[r1] = a[r2];
-    a[r2] = temp;
-}
-
-void luDecomposition(double **a, int d)
-{
-    double **l = malloc(d * sizeof(double*));
-    double **u = malloc(d * sizeof(double*));
-    double **p = malloc(d * sizeof(double*));
-    if (!l || !u || !p)
-    {
-        fprintf(stderr, "Error allocating memory\n");
-        exit(EXIT_FAILURE);
-    }
-    
-    // U = A 
-    // L = I
-    // P = I
-    double **copy = makeCopy(a, d);
-
-    // initialize P as the identity matrix 
-    for (int i = 0; i < d; ++i)
-    {
-        p[i] = malloc(d * sizeof(double));
-        for (int j = 0; j < d; ++j)
-        {
-            p[i][j] = (i == j) ? 1.0 : 0.0;
-        }
-    }
-    // initialize L as the identity matrix and U as the null matrix
-    for (int i = 0; i < d; ++i)
-    {
-        l[i] = malloc(d * sizeof(double));
-        u[i] = malloc(d * sizeof(double));
-        for (int j = 0; j < d; ++j)
-        {
-            l[i][j] = (i == j) ? 1.0 : 0.0;
-            u[i][j] = 0.0;
-        }
-    }
-
-    // partial pivoting subroutine
-    for (int k = 0; k < d; ++k)
-    {
-        // find the row with the max absolute value in the column k 
-        int pivotRow = k; // let's say the row with the maximum pivot is k 
-        double pivot = fabs(copy[k][k]); // we suppose the pivot is the matrix diagonal element
-        for (int i = k; i < d; ++i)
-        {
-            if (fabs(copy[i][k]) > pivot)
-            {
-                pivot = fabs(copy[i][k]); // take the absoulte value of the max element
-                pivotRow = i; // update the row
-            }
-        }
-        // swap rows if the index of the column k and the row index are different
-        // we make this swap since we want the max absolute value element in the main diagonal
-        if (pivotRow != k)
-        {
-            swapRows(copy, k, pivotRow); // update A
-            swapRows(p, k, pivotRow); // update P
-        }
-        if (k > 0) // k = 0 -> we did not calculate L yet
-        {
-            // update L
-            for (int i = 0; i < k; ++i)
-            {
-                double temp = l[k][i];
-                l[k][i] = l[pivotRow][i];
-                l[pivotRow][i] = temp;
-            }
-        }
-        
-    }
-
-    // making the U matrix - backward substitution
-     for (int i = 0; i < d; ++i)
-     {
-         for (int j = i; j < d; ++j)
-         {
-             double s = 0.0;
-             for (int k = 0; k < i; ++k)
-             {
-                 s += l[i][k] * u[k][j];
-             }
-             // compute U(i, j)
-             u[i][j] = copy[i][j] - s;
-         }
-
-         // making the L matrix - forward substitution
-         for (int j = i; j < d; ++j)
-         {
-             // ones on the main diagonal
-             if (i == j)
-             {
-                 l[i][j] = 1.0;
-             }
-             else
-             {
-                 double s = 0.0;
-                 for (int t = 0; t < i; ++t)
-                 {
-                     s += l[j][t] * u[t][i];
-                 }
-                 // compute L(i,j)
-                 l[j][i] = (copy[j][i] - s) / u[i][i];
-             }
-         }
-     }
-
-    printf("L is equal to:\n");
-    showMatrix(l, d);
-    printf("\n");
-    printf("U is equal to: \n");
-    showMatrix(u, d); 
-    printf("P is equal to: \n");
-    showMatrix(p, d);
-    deallocateMemory(l, d);
-    deallocateMemory(u, d);
-    deallocateMemory(p, d);
+    free(l);
+    free(u);
 }
 
 int main(int argc, char **argv)
@@ -200,31 +162,45 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    double **matrix = malloc(dim * sizeof(double*));
-    if (matrix == NULL)
+    double **A = malloc(dim * sizeof(double*));
+    double **L = malloc(dim * sizeof(double*));
+    double **U = malloc(dim * sizeof(double*));
+    if (!A || !L || !U)
     {
         printf("Error allocating memory for the matrix\n");
         exit(1);
     }
-
     for (int i = 0; i < dim; ++i)
     {
-        matrix[i] = malloc(dim * sizeof(double));
-        if (matrix[i] == NULL)
-        {
-            printf("Error filling the matrix\n");
-            exit(2);
-        }
+        A[i] = malloc(dim * sizeof(double));
+        L[i] = malloc(dim * sizeof(double));
+        U[i] = malloc(dim * sizeof(double));
         for (int j = 0; j < dim; ++j)
         {
-            matrix[i][j] = (double)rand() / RAND_MAX;
+            A[i][j] = rand() % RAND_MAX;
+            L[i][j] = (i == j) ? 1.0 : 0.0;
+            U[i][j] = 0.0;
         }
     }
 
-    printf("Matrix: \n");
-    showMatrix(matrix, dim);
-    luDecomposition(matrix, dim);
-    deallocateMemory(matrix, dim);
+    pthread_t threads[NUM_THREAD]; /* array of threads */
+    threadArg threadData[NUM_THREAD];
+    /* assigning thr rows to the threads */
+    int threadRow = dim / NUM_THREAD;
+    
+    for (int i = 0; i < NUM_THREAD; ++i)
+    {
+        threadData[i].a = A;
+        threadData[i].l = L;
+        threadData[i].u = U;
+        threadData[i].n = dim;
+        threadData[i].startingRow = i * threadRow;
+        /* if threadRow is not divisible by NUM_THREAD */
+        threadData[i].endingRow = (i == NUM_THREAD - 1) ? dim : (i + 1) * threadRow;
+    }
+    // TODO: create e join. Possibile implementazione di P
+
+
     return 0;
 }
 
