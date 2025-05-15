@@ -1,5 +1,5 @@
 /*
- *  Multithreaded LU decomposition - Doolitle's algorithm implementation
+ *  Multi-threaded LU decomposition - Doolitle's algorithm implementation
  *   
  *
  *  { Ly=b
