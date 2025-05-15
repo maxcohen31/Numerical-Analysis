@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS=-std=c11 -Wall -O -g 
+CFLAGS=-std=c11 -Wall -O -g -pthread 
 
-CFILE=lu.c
-OBJECTS=lu.o
+CFILE=multi_thread_lu.c
+OBJECTS=multi_thread_lu.o
 BINARY=bin
 
 all: $(BINARY)
