@@ -166,7 +166,7 @@ int main(int argc, char **argv)
     }
     for (int i = 0; i < dim; ++i)
     {
-        /* allocate memory for the rows */
+        /* allocate memory for each rows */
         A[i] = malloc(dim * sizeof(double));
         L[i] = malloc(dim * sizeof(double));
         U[i] = malloc(dim * sizeof(double));
